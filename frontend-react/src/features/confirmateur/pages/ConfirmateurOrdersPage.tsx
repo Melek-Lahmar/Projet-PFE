@@ -1,0 +1,462 @@
+import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { adjustConfirmateurTentative, getConfirmateurOrders } from "../api/confirmateurApi";
+import { Button } from "../../../shared/components/Button";
+import { Input } from "../../../shared/components/Input";
+import type { ConfirmateurOrder, OrderStatusValue } from "../types/confirmateur";
+import { getConfirmateurStatusMeta, clientDisplayFromOrder, formatDateTime, money, safe } from "../utils/confirmateurUi";
+import {
+  AnimatedCounter,
+  EmptyView,
+  PremiumHero,
+} from "../../../shared/components/premium";
+import { useToast } from "../../../shared/components/premium/Toast";
+import { getApiErrorMessage } from "../../../core/http/getApiErrorMessage";
+
+// Couleurs de statut en STYLE INLINE (immunisé contre le purge Tailwind / cache JIT).
+// En attente = jaune clair · Tentative = orange · Refusé = rouge · Transformé = vert.
+function statusBadgeStyle(workflowState: string): React.CSSProperties {
+  switch (workflowState) {
+    case "attempted":
+      return { backgroundColor: "#ea580c", color: "#ffffff" }; // orange-600
+    case "refused":
+      return { backgroundColor: "#dc2626", color: "#ffffff" }; // red-600
+    case "transformed":
+      return { backgroundColor: "#16a34a", color: "#ffffff" }; // green-600
+    case "pending":
+      return { backgroundColor: "#fde047", color: "#713f12", border: "1px solid #eab308" }; // jaune clair
+    default:
+      return { backgroundColor: "#e5e7eb", color: "#374151" }; // gris neutre
+  }
+}
+
+const TABS: Array<{ label: string; value?: OrderStatusValue }> = [
+  { label: "Toutes" },
+  { label: "En attente", value: 0 },
+  { label: "Tentatives", value: 2 },
+  { label: "Refusées", value: 3 },
+];
+
+type DateRangeFilter = "ALL" | "TODAY" | "THIS_WEEK" | "ONE_MONTH" | "SIX_MONTHS" | "ONE_YEAR";
+
+const DATE_FILTERS: Array<{ label: string; value: DateRangeFilter }> = [
+  { label: "Tout", value: "ALL" },
+  { label: "Aujourd'hui", value: "TODAY" },
+  { label: "Cette semaine", value: "THIS_WEEK" },
+  { label: "1 mois", value: "ONE_MONTH" },
+  { label: "6 mois", value: "SIX_MONTHS" },
+  { label: "1 an", value: "ONE_YEAR" },
+];
+
+function SummaryCard({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: number | string;
+  hint: string;
+}) {
+  return (
+    <div className="hover-lift rounded-[24px] border border-border/70 bg-muted/25 px-4 py-4">
+      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+        {label}
+      </div>
+      <div className="mt-2 text-2xl font-black tracking-tight text-card-foreground">
+        {typeof value === "number" ? <AnimatedCounter value={value} /> : value}
+      </div>
+      <div className="mt-1 text-xs text-muted-foreground">{hint}</div>
+    </div>
+  );
+}
+
+function parseOrderDate(value?: string | null): Date | null {
+  if (!value || !value.trim()) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function startOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+}
+
+function endOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+}
+
+function startOfWeekMonday(date: Date) {
+  const current = startOfDay(date);
+  const day = current.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  current.setDate(current.getDate() + diff);
+  return current;
+}
+
+function addMonths(date: Date, months: number) {
+  const copy = new Date(date);
+  copy.setMonth(copy.getMonth() + months);
+  return copy;
+}
+
+function matchesDateRange(orderDateValue: string | null | undefined, filter: DateRangeFilter) {
+  if (filter === "ALL") return true;
+
+  const orderDate = parseOrderDate(orderDateValue);
+  if (!orderDate) return false;
+
+  const now = new Date();
+
+  switch (filter) {
+    case "TODAY": {
+      const start = startOfDay(now);
+      const end = endOfDay(now);
+      return orderDate >= start && orderDate <= end;
+    }
+
+    case "THIS_WEEK": {
+      const start = startOfWeekMonday(now);
+      const end = endOfDay(now);
+      return orderDate >= start && orderDate <= end;
+    }
+
+    case "ONE_MONTH": {
+      const start = addMonths(now, -1);
+      return orderDate >= start && orderDate <= now;
+    }
+
+    case "SIX_MONTHS": {
+      const start = addMonths(now, -6);
+      return orderDate >= start && orderDate <= now;
+    }
+
+    case "ONE_YEAR": {
+      const start = addMonths(now, -12);
+      return orderDate >= start && orderDate <= now;
+    }
+
+    default:
+      return true;
+  }
+}
+
+function getDateFilterDescription(filter: DateRangeFilter) {
+  switch (filter) {
+    case "TODAY":
+      return "Commandes datées d’aujourd’hui";
+    case "THIS_WEEK":
+      return "Commandes de la semaine en cours";
+    case "ONE_MONTH":
+      return "Commandes des 30 derniers jours";
+    case "SIX_MONTHS":
+      return "Commandes des 6 derniers mois";
+    case "ONE_YEAR":
+      return "Commandes des 12 derniers mois";
+    default:
+      return "Toutes les commandes visibles";
+  }
+}
+
+export function ConfirmateurOrdersPage() {
+  const [tab, setTab] = useState<OrderStatusValue | undefined>(undefined);
+  const [search, setSearch] = useState("");
+  const [dateFilter, setDateFilter] = useState<DateRangeFilter>("ALL");
+  const toast = useToast();
+  const qc = useQueryClient();
+
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
+    queryKey: ["confirmateur", "commandes"],
+    queryFn: () => getConfirmateurOrders(),
+  });
+
+  const tentativeMutation = useMutation({
+    mutationFn: ({ piece, delta }: { piece: string; delta: 1 | -1 }) =>
+      adjustConfirmateurTentative(piece, delta),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["confirmateur", "commandes"] });
+    },
+    onError: (err) => toast.error("Action impossible", getApiErrorMessage(err)),
+  });
+
+  const orders = useMemo(() => data ?? [], [data]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+
+    return orders.filter((order) => {
+      if (tab !== undefined && order.dO_Valide !== tab) return false;
+      // Onglet "Toutes" : on masque les BC déjà confirmés/transformés (DO_Valide=1)
+      // car ils sont devenus des bons de livraison et n'ont plus à être traités ici.
+      if (tab === undefined && order.dO_Valide === 1) return false;
+
+      const matchesPeriod = matchesDateRange(order.dO_Date, dateFilter);
+      if (!matchesPeriod) return false;
+
+      if (!q) return true;
+
+      const piece = (order.dO_Piece ?? "").toLowerCase();
+      const tiers = (order.dO_Tiers ?? "").toLowerCase();
+      const reference = (order.dO_Ref ?? "").toLowerCase();
+      const client = clientDisplayFromOrder(order).toLowerCase();
+      const phone = ((order.clientPhone ?? order.dO_TelephoneLivraison) ?? "").toLowerCase();
+      const status = (order.statusLabel ?? "").toLowerCase();
+
+      return (
+        piece.includes(q) ||
+        tiers.includes(q) ||
+        reference.includes(q) ||
+        client.includes(q) ||
+        phone.includes(q) ||
+        status.includes(q)
+      );
+    });
+  }, [orders, search, dateFilter, tab]);
+
+  const metrics = useMemo(() => {
+    let pending = 0;
+    let attempted = 0;
+    let refused = 0;
+    let transformed = 0;
+
+    for (const order of filtered) {
+      const meta = getConfirmateurStatusMeta(order.statusLabel, order.dO_Valide);
+      if (meta.workflowState === "pending") pending += 1;
+      if (meta.workflowState === "attempted") attempted += 1;
+      if (meta.workflowState === "refused") refused += 1;
+      if (meta.workflowState === "transformed") transformed += 1;
+    }
+
+    return {
+      total: filtered.length,
+      pending,
+      attempted,
+      refused,
+      transformed,
+    };
+  }, [filtered]);
+
+  return (
+    <div className="w-full space-y-6 pb-10">
+      <PremiumHero
+        kicker="Confirmateur"
+        title="Bons de commande (BC)"
+        gradientTitle
+        description="Liste des bons de commande à contrôler et confirmer."
+        actions={
+          <>
+            <Link to="/confirmateur/bl">
+              <Button type="button" variant="outline" className="h-11 rounded-2xl px-5">
+                Voir les BL
+              </Button>
+            </Link>
+            <Button type="button" variant="outline" onClick={() => refetch()} className="h-11 rounded-2xl px-5">
+              {isFetching ? "Actualisation..." : "Rafraîchir"}
+            </Button>
+          </>
+        }
+      />
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <SummaryCard label="Total BC" value={metrics.total} hint={getDateFilterDescription(dateFilter)} />
+        <SummaryCard label="En attente" value={metrics.pending} hint="À qualifier par le confirmateur" />
+        <SummaryCard label="Tentatives" value={metrics.attempted} hint="Points d’attention signalés" />
+        <SummaryCard label="Refusées" value={metrics.refused} hint="Clôturées sans validation" />
+        <SummaryCard label="Transformées" value={metrics.transformed} hint="Déjà converties en BL" />
+      </section>
+
+      <section className="app-surface px-5 py-5 md:px-6">
+        <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex flex-wrap gap-2">
+              {TABS.map((item) => {
+                const active = item.value === tab;
+                return (
+                  <Button
+                    key={item.label}
+                    type="button"
+                    variant={active ? "primary" : "outline"}
+                    onClick={() => setTab(item.value)}
+                    className="rounded-2xl px-4"
+                  >
+                    {item.label}
+                  </Button>
+                );
+              })}
+            </div>
+
+            <div className="flex w-full flex-col gap-3 xl:w-auto xl:min-w-[460px] xl:flex-row">
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Rechercher par N° BC, nom client, téléphone ou statut..."
+              />
+              <div className="inline-flex items-center justify-center rounded-2xl border border-border/70 bg-muted/25 px-4 text-sm font-semibold text-muted-foreground">
+                {filtered.length} résultat{filtered.length > 1 ? "s" : ""}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-[24px] border border-border/70 bg-muted/20 px-4 py-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Filtre période</div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                Sélectionnez une période d’analyse confirmateur. Le filtre par défaut affiche toutes les périodes.
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {DATE_FILTERS.map((item) => {
+                  const active = item.value === dateFilter;
+                  return (
+                    <Button
+                      key={item.value}
+                      type="button"
+                      variant={active ? "primary" : "outline"}
+                      onClick={() => setDateFilter(item.value)}
+                      className="rounded-2xl px-4"
+                    >
+                      {item.label}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {isLoading ? <div className="text-sm text-muted-foreground">Chargement des bons de commande...</div> : null}
+
+      {isError ? (
+        <div className="ds-alert ds-alert-danger">
+          Erreur : {(error as Error)?.message ?? "Impossible de charger les commandes confirmateur."}
+        </div>
+      ) : null}
+
+      {!isLoading && !isError ? (
+        <section className="overflow-hidden rounded-[30px] border border-border bg-card shadow-sm">
+          <div className="grid min-w-[1100px] grid-cols-12 gap-3 border-b border-border bg-muted/35 px-5 py-4 text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+            <div className="col-span-2">Référence BC</div>
+            <div className="col-span-2">Client</div>
+            <div className="col-span-2">Commercial</div>
+            <div className="col-span-1">Entrepôt</div>
+            <div className="col-span-2">Date création</div>
+            <div className="col-span-1 text-right">Montant TTC</div>
+            <div className="col-span-1">Statut</div>
+            <div className="col-span-1 text-right">Actions</div>
+          </div>
+
+          <div className="overflow-x-auto">
+            {filtered.length === 0 ? (
+              <div className="px-5 py-8">
+                <EmptyView
+                  title="Aucun bon de commande"
+                  description="Aucun BC ne correspond aux filtres actuels. Modifiez la période, le statut ou la recherche."
+                  iconPath="M21 21l-4.35-4.35 M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z"
+                />
+              </div>
+            ) : (
+              <div className="min-w-[1100px] divide-y divide-border/70">
+                {filtered.map((order: ConfirmateurOrder) => {
+                  const piece = safe(order.dO_Piece);
+                  const client = clientDisplayFromOrder(order);
+                  const statusMeta = getConfirmateurStatusMeta(order.statusLabel, order.dO_Valide);
+
+                  return (
+                    <div key={`${order.dO_Piece ?? piece}`} className="grid grid-cols-12 gap-3 px-5 py-4 transition hover:bg-muted/25">
+                      <div className="col-span-2 min-w-0">
+                        <div className="flex items-start gap-3">
+                          <span
+                            className={`mt-1 h-12 w-1 rounded-full ${
+                              statusMeta.workflowState === "refused"
+                                ? "bg-danger"
+                                : statusMeta.workflowState === "attempted"
+                                  ? "bg-orange-500"
+                                  : statusMeta.workflowState === "transformed"
+                                    ? "bg-success"
+                                    : "bg-yellow-400"
+                            }`}
+                          />
+                          <div className="min-w-0 space-y-2">
+                            <div className="truncate text-base font-black text-card-foreground">{piece}</div>
+                            <div className="text-xs text-muted-foreground">Réf. {safe(order.dO_Ref)}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="col-span-2 min-w-0">
+                        <div className="truncate font-semibold text-card-foreground">{client}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">{safe(order.dO_Tiers)}</div>
+                      </div>
+
+                      <div className="col-span-2 min-w-0">
+                        <div className="truncate font-semibold text-card-foreground">-</div>
+                        <div className="mt-1 text-xs text-muted-foreground">Non disponible</div>
+                      </div>
+
+                      <div className="col-span-1 min-w-0">
+                        <div className="truncate font-semibold text-card-foreground">{order.dE_No ? `Dépôt ${order.dE_No}` : "-"}</div>
+                      </div>
+
+                      <div className="col-span-2">
+                        <div className="font-semibold text-card-foreground">{formatDateTime(order.dO_Date)}</div>
+                      </div>
+
+                      <div className="col-span-1 text-right">
+                        <div className="font-black text-card-foreground">{money(order.dO_TotalTTC)}</div>
+                      </div>
+
+                      <div className="col-span-1 space-y-2">
+                        <span
+                          className="inline-flex items-center rounded-full px-3 py-1 text-[11px] font-bold"
+                          style={statusBadgeStyle(statusMeta.workflowState)}
+                        >
+                          {statusMeta.label}
+                        </span>
+                        {order.dO_Valide === 2 ? (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              title="Retirer une tentative"
+                              disabled={tentativeMutation.isPending || (order.tentativeCount ?? 0) <= 0}
+                              onClick={() => tentativeMutation.mutate({ piece: order.dO_Piece ?? "", delta: -1 })}
+                              className="inline-flex h-6 w-6 items-center justify-center rounded-lg border border-border bg-card text-sm font-black text-muted-foreground transition hover:bg-muted disabled:opacity-40"
+                            >
+                              −
+                            </button>
+                            <span className="min-w-[2.25rem] rounded-lg bg-orange-100 px-2 py-0.5 text-center text-xs font-black text-orange-700 dark:bg-orange-500/15 dark:text-orange-300">
+                              {order.tentativeCount ?? 0}
+                            </span>
+                            <button
+                              type="button"
+                              title="Ajouter une tentative"
+                              disabled={tentativeMutation.isPending}
+                              onClick={() => tentativeMutation.mutate({ piece: order.dO_Piece ?? "", delta: 1 })}
+                              className="inline-flex h-6 w-6 items-center justify-center rounded-lg border border-border bg-card text-sm font-black text-card-foreground transition hover:bg-muted disabled:opacity-40"
+                            >
+                              +
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="col-span-1 flex items-center justify-end">
+                        <Link to={`/confirmateur/commandes/${encodeURIComponent(order.dO_Piece ?? "")}`}>
+                          <Button type="button" variant="outline" size="sm" className="px-4">
+                            Ouvrir
+                          </Button>
+                        </Link>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}

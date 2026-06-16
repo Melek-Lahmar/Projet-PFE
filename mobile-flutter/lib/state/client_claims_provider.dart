@@ -1,0 +1,126 @@
+import '../core/api_exception.dart';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+
+import '../data/services/client_claims_service.dart';
+import '../models/client_claim.dart';
+
+class ClientClaimsProvider extends ChangeNotifier {
+  final ClientClaimsService service;
+
+  ClientClaimsProvider(this.service);
+
+  bool loading = false;
+  String? error;
+  List<ClientClaim> items = const [];
+
+  Future<void> refresh() async {
+    loading = true;
+    error = null;
+    notifyListeners();
+    try {
+      items = await service.fetchMine();
+    } catch (e) {
+      error = friendlyError(e);
+    } finally {
+      loading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<ClientClaim?> fetchDetails(int id) async {
+    loading = true;
+    error = null;
+    notifyListeners();
+    try {
+      return await service.fetchDetails(id);
+    } catch (e) {
+      error = friendlyError(e);
+      return null;
+    } finally {
+      loading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<ClientClaim?> requestEchange(int reclamationId, String text) async {
+    try {
+      final updated = await service.requestEchange(reclamationId, text);
+      final idx = items.indexWhere((c) => c.id == reclamationId);
+      if (idx >= 0) {
+        final copy = [...items];
+        copy[idx] = updated;
+        items = copy;
+      }
+      notifyListeners();
+      return updated;
+    } catch (e) {
+      error = friendlyError(e);
+      notifyListeners();
+      return null;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchRepeatOrderLines(int reclamationId) async {
+    try {
+      return await service.fetchRepeatOrderLines(reclamationId);
+    } catch (e) {
+      error = friendlyError(e);
+      notifyListeners();
+      return const [];
+    }
+  }
+
+  Future<ClientClaim?> create({
+    required String doPiece,
+    required String motif,
+    required String description,
+    required bool isGlobal,
+    String? arRef,
+    String? typeReclamation,
+    String? priorite,
+    String? correctionProposee,
+    List<File>? photos,
+    DateTime? reprogrammationDate,
+    String? reprogrammationCreneau,
+  }) async {
+    error = null;
+    try {
+      final created = await service.create(
+        doPiece: doPiece,
+        motif: motif,
+        description: description,
+        isGlobal: isGlobal,
+        arRef: arRef,
+        typeReclamation: typeReclamation,
+        priorite: priorite,
+        correctionProposee: correctionProposee,
+        reprogrammationDate: reprogrammationDate,
+        reprogrammationCreneau: reprogrammationCreneau,
+      );
+
+      int photoFailures = 0;
+      if (photos != null && photos.isNotEmpty) {
+        for (final p in photos) {
+          try {
+            await service.uploadPhoto(created.id, p);
+          } catch (_) {
+            photoFailures++;
+          }
+        }
+      }
+
+      items = [created, ...items];
+      if (photoFailures > 0) {
+        error = "Réclamation créée, mais $photoFailures photo(s) n'ont pas pu être envoyées.";
+      }
+      notifyListeners();
+      return created;
+    } catch (e) {
+      error = friendlyError(e);
+      notifyListeners();
+      return null;
+    }
+  }
+}

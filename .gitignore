@@ -1,0 +1,84 @@
+# General
+*.log
+*.tmp
+*.bak
+*.backup
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+PFE_TEST_ACCOUNTS.txt
+
+# Visual Studio / .NET
+.vs/
+**/.vs/
+bin/
+**/bin/
+obj/
+**/obj/
+TestResults/
+**/TestResults/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.dll
+*.exe
+*.pdb
+*.cache
+
+# Node / React
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+build/
+**/build/
+.vite/
+**/.vite/
+.next/
+**/.next/
+coverage/
+**/coverage/
+
+# Flutter / Dart
+.dart_tool/
+**/.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+
+# Android / Gradle
+.gradle/
+**/.gradle/
+android/.gradle/
+**/local.properties
+**/.kotlin/
+
+# IDE
+.idea/
+**/.idea/
+.vscode/settings.json
+
+# Local database files
+*.mdf
+*.ldf
+*.sqlite
+*.sqlite3
+*.db
+
+# Archives and generated seed output
+*.zip
+*.rar
+*.7z
+_seed-output/
+SeedOutput/

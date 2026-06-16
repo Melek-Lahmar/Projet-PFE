@@ -1,0 +1,47 @@
+import { useEffect } from "react";
+import { QueryProvider } from "./providers/QueryProvider";
+import { RouterProvider } from "./providers/RouterProvider";
+import { HomepageThemeProvider } from "../features/homepage/providers/HomepageThemeProvider";
+import { useAuthBootstrap } from "../features/auth/hooks/useAuthBootstrap";
+import { useLayoutStore } from "../shared/store/layoutStore";
+import { ToastProvider } from "../shared/components/premium";
+import { ChatbotFab } from "../features/admin/chatbot/components/ChatbotFab";
+import { PublicSettingsBootstrapper } from "../features/settings/components/PublicSettingsBootstrapper";
+
+function AuthBootstrapper() {
+  useAuthBootstrap();
+  return null;
+}
+
+function ThemeBootstrapper() {
+  const themeMode = useLayoutStore((s) => s.themeMode);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const isDark = themeMode === "dark";
+
+    root.classList.toggle("dark", isDark);
+    root.style.colorScheme = isDark ? "dark" : "light";
+  }, [themeMode]);
+
+  return null;
+}
+
+export function App() {
+  return (
+    <QueryProvider>
+      <ToastProvider>
+        <AuthBootstrapper />
+        <ThemeBootstrapper />
+        <PublicSettingsBootstrapper />
+
+        {/* HomepageThemeProvider wraps RouterProvider */}
+        <HomepageThemeProvider initialThemeId="minimaliste">
+          <RouterProvider />
+        </HomepageThemeProvider>
+
+        <ChatbotFab />
+      </ToastProvider>
+    </QueryProvider>
+  );
+}
