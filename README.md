@@ -23,6 +23,10 @@ Plateforme full-stack réunissant e-commerce B2C/B2B, gestion commerciale, livra
 
 > Ce dépôt présente une solution académique fonctionnelle construite autour d'un besoin métier réel : relier les usages web et mobile aux données commerciales de Sage X3, tout en centralisant la commande, la confirmation, la livraison, les réclamations et le pilotage administratif.
 
+| 3 applications | 9 profils métier | 5 sprints | 2 flux Sage X3 | Temps réel et automatisation |
+|:---:|:---:|:---:|:---:|:---:|
+| React, ASP.NET Core, Flutter | Du visiteur à l'administrateur | Construction incrémentale | Descendant et ascendant | SignalR, n8n et Groq |
+
 ---
 
 ## Sommaire
@@ -61,6 +65,16 @@ La solution couvre l'ensemble d'un parcours commercial et logistique :
 7. Sage X3 reste le référentiel des articles, catalogues, dépôts, stocks et documents commerciaux.
 
 Le projet ne se limite donc pas à une boutique en ligne. Il met en relation plusieurs profils, plusieurs canaux et plusieurs systèmes autour d'une Web API centrale.
+
+### Lecture rapide de la solution
+
+| Besoin métier | Réponse apportée | Preuve dans le dépôt |
+|---|---|---|
+| Commercialiser un catalogue issu de l'ERP | Parcours B2C/B2B, panier, devis, remises et paiement | `frontend-react/` et API métier |
+| Garder une donnée cohérente | Synchronisation contrôlée des articles, catalogues, dépôts et stocks | Services Sage X3 et dashboard qualité |
+| Exécuter la livraison sur le terrain | Missions mobiles, GPS, scan, COD, transit et statuts temps réel | `mobile-flutter/` et hubs SignalR |
+| Traiter les incidents sans rupture | Réclamations, prise en charge, conversation et escalade | API, application Flutter et temps réel |
+| Aider l'administrateur à décider | KPI, exports, chatbot et insights proactifs | Dashboards React et workflows n8n |
 
 | Dimension | Couverture |
 |---|---|
@@ -131,6 +145,12 @@ Concevoir une plateforme intégrée capable de relier le parcours client, la ges
 | Administrateur | Gérer les comptes, rôles, produits, stocks, synchronisations, dashboards, exports et chatbot |
 
 ![Cas d'utilisation global](docs/assets/diagrams/use-case-global.png)
+
+La sécurité est pensée dès l'entrée dans le système. L'inscription classique ou OAuth, la réinitialisation par e-mail, l'authentification et l'affectation des rôles convergent vers une politique d'accès centralisée.
+
+![Cas d'utilisation de l'authentification et des rôles](docs/assets/diagrams/use-case-authentication.png)
+
+<p align="center"><em>Figure : création de compte, récupération d'accès et administration des rôles autour des services OAuth et SMTP.</em></p>
 
 <a id="architecture"></a>
 ## Architecture globale
@@ -405,16 +425,49 @@ La conception UML a servi à formaliser les responsabilités des acteurs, les in
 
 ![Séquence commande vers livraison](docs/assets/diagrams/sequence-order-to-delivery.png)
 
+### Logistique terrain et réclamation temps réel
+
+Le périmètre mobile relie quatre rôles opérationnels. La confirmatrice transforme les documents commerciaux et traite les réclamations, le livreur exécute la livraison et remonte sa position, le livreur de transit déplace les articles entre dépôts, et le superviseur suit les anomalies ainsi que l'activité terrain.
+
+![Cas d'utilisation de la logistique terrain](docs/assets/diagrams/use-case-field-logistics.png)
+
+<p align="center"><em>Figure : responsabilités terrain et intégrations Sage X3, SignalR et Mapbox/OSRM.</em></p>
+
+Une réclamation suit un cycle contrôlé : création dans Flutter, persistance SQL, notification du groupe de confirmatrices, prise en charge, conversation SignalR, délai de grâce à la déconnexion, escalade après plusieurs tentatives et clôture synchronisée.
+
+<details>
+<summary><strong>Afficher le diagramme de séquence complet d'une réclamation</strong></summary>
+
+![Séquence de traitement d'une réclamation en temps réel](docs/assets/diagrams/sequence-realtime-claim.png)
+
+</details>
+
 <a id="captures"></a>
 ## Captures de réalisation
 
-### Parcours client web
+Les écrans suivants proviennent de la réalisation présentée dans le rapport de PFE. Ils illustrent les parcours fonctionnels, et pas uniquement l'apparence de l'interface.
 
-| Détail produit | Favoris client |
+### 1. Entrée dans le parcours client
+
+| Inscription sécurisée | Récupération d'accès |
 |---|---|
-| ![Détail produit](docs/assets/screenshots/frontend/frontend-product-detail.png) | ![Favoris client](docs/assets/screenshots/frontend/frontend-favorites.png) |
+| ![Inscription client](docs/assets/screenshots/frontend/frontend-registration.png) | ![Récupération du mot de passe](docs/assets/screenshots/frontend/frontend-password-recovery.png) |
+| Choix B2C/B2B, coordonnées, mot de passe et localisation GPS. | Demande de réinitialisation volontairement neutre pour ne pas révéler l'existence d'un compte. |
 
-### Administration et pilotage
+### 2. Découverte et sélection des produits
+
+| Navigation du catalogue | Détail produit | Favoris client |
+|---|---|---|
+| ![Navigation du catalogue](docs/assets/screenshots/frontend/frontend-catalog-navigation.png) | ![Détail produit](docs/assets/screenshots/frontend/frontend-product-detail.png) | ![Favoris client](docs/assets/screenshots/frontend/frontend-favorites.png) |
+| Navigation par départements, familles et sous-familles. | Prix, disponibilité, média et informations commerciales. | Liste personnelle persistante avant passage au panier. |
+
+### 3. Validation commerciale
+
+![Validation de commande et choix du paiement](docs/assets/screenshots/frontend/frontend-checkout-confirmation.png)
+
+<p align="center"><em>Figure : dernière étape du checkout avec livraison à domicile ou retrait, adresse enregistrée ou temporaire, paiement à la livraison ou paiement sécurisé et calcul du total.</em></p>
+
+### 4. Administration et pilotage
 
 | Dashboard global | Centre de contrôle |
 |---|---|
@@ -428,17 +481,27 @@ La conception UML a servi à formaliser les responsabilités des acteurs, les in
 |---|---|
 | ![Stocks](docs/assets/screenshots/admin/admin-stock-management.png) | ![Exports](docs/assets/screenshots/admin/admin-exports.png) |
 
-### Application mobile et terrain
+#### Gestion commerciale B2B
+
+![Gestion des clients et remises B2B](docs/assets/screenshots/admin/admin-b2b-management.png)
+
+<p align="center"><em>Figure : chiffre d'affaires B2B, segmentation des comptes, remise courante, remise suggérée, historique et accès aux devis.</em></p>
+
+### 5. Application mobile et terrain
 
 | Missions de livraison | Scan code-barres | Vue superviseur |
 |---|---|---|
 | ![Livraisons](docs/assets/screenshots/mobile/mobile-delivery-list.png) | ![Scan](docs/assets/screenshots/mobile/mobile-barcode-scan.png) | ![Supervision](docs/assets/screenshots/mobile/mobile-supervisor-overview.png) |
 
-### Chatbot et automatisation
+Le livreur dispose d'une liste de missions et de contrôles adaptés au terrain. Le scan sécurise les passages inter-dépôts, tandis que le superviseur retrouve dans une seule vue les missions, blocages, alertes et positions des équipes.
+
+### 6. Chatbot et automatisation
 
 | Interface chatbot | Séquence d'orchestration |
 |---|---|
 | ![Chatbot](docs/assets/screenshots/n8n/chatbot-admin-n8n.png) | ![Séquence chatbot](docs/assets/screenshots/n8n/n8n-chatbot-sequence.png) |
+
+L'interface ne se contente pas d'envoyer un prompt à un modèle. La question est associée à une session, enrichie par le contexte métier fourni par l'API, routée vers l'action autorisée, puis complétée par des insights avant historisation de la réponse.
 
 <a id="stack-technique"></a>
 ## Stack technique
