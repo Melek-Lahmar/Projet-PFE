@@ -144,6 +144,10 @@ Concevoir une plateforme intégrée capable de relier le parcours client, la ges
 | Superviseur | Suivre les livreurs, le transit, les retards, les anomalies et les réaffectations |
 | Administrateur | Gérer les comptes, rôles, produits, stocks, synchronisations, dashboards, exports et chatbot |
 
+![Acteurs du système présentés par domaine](docs/assets/presentation-extracts/actors-system.png)
+
+<p align="center"><em>Figure issue de la présentation : clients B2C/B2B, gestion commerciale, terrain logistique et administration.</em></p>
+
 ![Cas d'utilisation global](docs/assets/diagrams/use-case-global.png)
 
 La sécurité est pensée dès l'entrée dans le système. L'inscription classique ou OAuth, la réinitialisation par e-mail, l'authentification et l'affectation des rôles convergent vers une politique d'accès centralisée.
@@ -183,6 +187,24 @@ flowchart LR
     API -.->|"SignalR : statuts, GPS, réclamations"| WEB
     API -.->|"SignalR : statuts, GPS, réclamations"| MOB
 ```
+
+![Architecture logique issue de la présentation](docs/assets/architecture/logical-architecture-presentation.png)
+
+<p align="center"><em>Architecture logique : frontend React, application Flutter, backend ASP.NET Core, SQL Server et services externes.</em></p>
+
+### Intégrations externes
+
+L'API centralise les échanges et évite tout couplage direct entre les interfaces et les fournisseurs externes. Sage X3 porte le référentiel commercial, Cloudinary les médias, Konnect le paiement, Brevo les e-mails, SignalR le temps réel et n8n l'orchestration visuelle du chatbot.
+
+![Architecture des intégrations externes avec n8n](docs/assets/architecture/external-integrations-n8n.png)
+
+<p align="center"><em>Figure issue de la présentation : l'API ASP.NET Core comme point de contrôle des six intégrations externes.</em></p>
+
+### Sécurité JWT et autorisation par rôles
+
+Le cycle d'accès comporte cinq étapes : connexion, vérification des identifiants, génération du JWT signé, envoi du jeton dans les requêtes puis contrôle du rôle par le backend.
+
+![Architecture de sécurité JWT](docs/assets/architecture/jwt-security-architecture.png)
 
 ### Principes d'architecture
 
@@ -307,6 +329,12 @@ flowchart TD
     GROQ --> INSIGHT --> MERGE --> JSON --> UI
 ```
 
+La représentation ci-dessous correspond au workflow V3 présenté dans les supports du projet. Elle montre le webhook, la détection de langue, l'appel au backend, le branchement des actions, l'ajout d'insights et la réponse HTTP finale.
+
+![Architecture détaillée du workflow n8n V3](docs/assets/architecture/n8n-workflow-architecture.png)
+
+<p align="center"><em>Architecture n8n : Webhook `/admin-chat-v3` → détection de langue → backend → actions et insights → fusion → réponse.</em></p>
+
 ### Responsabilité de chaque composant
 
 | Composant | Rôle |
@@ -386,6 +414,10 @@ L'administrateur peut déclencher une synchronisation par entité ou une synchro
 
 ![Architecture de synchronisation Sage X3](docs/assets/architecture/sage-x3-sync-architecture.png)
 
+![Utilisation de Sage X3 dans la solution](docs/assets/architecture/sage-x3-presentation-architecture.png)
+
+<p align="center"><em>Vue issue de la présentation : données descendantes vers la plateforme et publication ascendante des bons de livraison.</em></p>
+
 Le dashboard de synchronisation permet de contrôler les compteurs d'articles, dépôts et stocks, ainsi que les alertes d'intégrité ou les dernières opérations.
 
 <a id="sprints"></a>
@@ -402,6 +434,8 @@ Le développement a suivi Scrum avec collecte des besoins, backlog produit, back
 | Sprint 5 | Pilotage et aide à la décision | Dashboards, exports Excel/PDF, insights, ML.NET et chatbot n8n |
 
 Le Sprint 5 a ajouté une dimension décisionnelle aux modules opérationnels développés auparavant. Les indicateurs couvrent notamment ventes, commandes, stocks, livraisons, livreurs, clients, réclamations et qualité de synchronisation.
+
+![Planification des cinq sprints](docs/assets/presentation-extracts/sprint-planning.png)
 
 <a id="uml"></a>
 ## Conception UML et modèle de données
@@ -481,13 +515,38 @@ Les écrans suivants proviennent de la réalisation présentée dans le rapport 
 |---|---|
 | ![Stocks](docs/assets/screenshots/admin/admin-stock-management.png) | ![Exports](docs/assets/screenshots/admin/admin-exports.png) |
 
+#### Catalogue, médias et documents logistiques
+
+| Gestion des articles | Images Cloudinary |
+|---|---|
+| ![Gestion administrative des articles](docs/assets/screenshots/admin/admin-article-management.png) | ![Gestion des images produit Cloudinary](docs/assets/screenshots/admin/admin-cloudinary-images.png) |
+| Recherche par référence, visibilité immédiate du stock et accès aux médias. | Upload, URL publique, image principale, ordre d'affichage et suppression. |
+
+![Manifeste et impression des bons de livraison](docs/assets/screenshots/admin/admin-delivery-manifest.png)
+
+<p align="center"><em>Figure : sélection groupée, contrôle de l'ancienneté, montant à encaisser et impression des bons de livraison.</em></p>
+
 #### Gestion commerciale B2B
 
 ![Gestion des clients et remises B2B](docs/assets/screenshots/admin/admin-b2b-management.png)
 
 <p align="center"><em>Figure : chiffre d'affaires B2B, segmentation des comptes, remise courante, remise suggérée, historique et accès aux devis.</em></p>
 
-### 5. Application mobile et terrain
+### 5. Espace vendeur et confirmation commerciale
+
+| Catalogue du vendeur | Bons de commande à confirmer |
+|---|---|
+| ![Catalogue vendeur par dépôt](docs/assets/screenshots/vendor/vendor-catalog.png) | ![Liste des commandes du confirmateur](docs/assets/screenshots/confirmateur/confirmateur-orders.png) |
+| Disponibilité calculée selon le dépôt du vendeur, recherche, filtres et panier dédié. | Indicateurs, statuts, filtres de période et accès au contrôle détaillé du BC. |
+
+#### Réclamations côté confirmateur
+
+| Back-office web | Application mobile |
+|---|---|
+| ![Gestion web des réclamations](docs/assets/screenshots/confirmateur/confirmateur-claims.png) | ![Réclamations sur mobile](docs/assets/screenshots/confirmateur/confirmateur-mobile-claims.png) |
+| Dossiers à traiter, en cours ou clos, recherche, détails et preuves. | File de réclamations adaptée au terrain avec filtres et navigation par statut. |
+
+### 6. Application mobile et terrain
 
 | Missions de livraison | Scan code-barres | Vue superviseur |
 |---|---|---|
@@ -495,7 +554,12 @@ Les écrans suivants proviennent de la réalisation présentée dans le rapport 
 
 Le livreur dispose d'une liste de missions et de contrôles adaptés au terrain. Le scan sécurise les passages inter-dépôts, tandis que le superviseur retrouve dans une seule vue les missions, blocages, alertes et positions des équipes.
 
-### 6. Chatbot et automatisation
+| Itinéraire et trafic | Caisse COD | Suivi client |
+|---|---|---|
+| ![Carte et itinéraire de livraison](docs/assets/screenshots/mobile/mobile-route-map.png) | ![Statistiques et caisse COD](docs/assets/screenshots/mobile/mobile-cod-stats.png) | ![Historique de suivi de commande](docs/assets/screenshots/mobile/mobile-order-tracking.png) |
+| Distance, durée, coût estimé, trafic et optimisation de l'ordre des arrêts. | Livraisons, missions en cours, montant collecté et remise de caisse au dépôt. | Chronologie des événements depuis la création jusqu'à la livraison. |
+
+### 7. Chatbot et automatisation
 
 | Interface chatbot | Séquence d'orchestration |
 |---|---|
