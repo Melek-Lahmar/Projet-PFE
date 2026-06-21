@@ -49,7 +49,6 @@ Plateforme full-stack réunissant e-commerce B2C/B2B, gestion commerciale, livra
 - [Configuration](#configuration)
 - [Sécurité, qualité et validation](#qualite)
 - [Limites et perspectives](#perspectives)
-- [Auteurs et encadrement](#auteurs)
 
 <a id="resume"></a>
 ## Résumé exécutif
@@ -748,26 +747,6 @@ Cette version constitue une base fonctionnelle de PFE, pas un déploiement de pr
 - renforcer la résilience hors ligne de l'application mobile ;
 - enrichir les dashboards, insights et capacités conversationnelles ;
 - mettre en place une chaîne CI/CD et une stratégie de déploiement reproductible.
-
-<a id="auteurs"></a>
-## Auteurs et encadrement
-
-### Réalisation
-
-- **Melek Lahmar**
-- **Tawfik Siala**
-
-### Encadrement
-
-- **M. Yousri Fakhfakh**, encadrant académique ;
-- **M. Majdi Radadi**, encadrant industriel ;
-- **M. Mohamed Dhieb**, encadrant industriel.
-
-### Etablissement et entreprise d'accueil
-
-- Institut Supérieur des Etudes Technologiques de Sfax ;
-- Département Technologies de l'Information ;
-- InfoSoft.
 
 ## Licence et usage
 
